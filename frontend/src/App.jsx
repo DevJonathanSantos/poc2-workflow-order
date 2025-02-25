@@ -15,7 +15,7 @@ function App() {
                 try {
                     const response = await axios.get(`http://localhost:3001/order/${jobId}`);
                     setStatus(response.data.status);
-                    if (response.data.status === "Processado") {
+                    if (response.data.status === "Processed") {
                         setResult(response.data.result);
                         clearInterval(interval);
                     }

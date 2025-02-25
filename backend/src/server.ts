@@ -1,8 +1,7 @@
-import express from "express";
-import { Queue, Worker, Job, QueueEvents } from "bullmq";
+import express, { Request, Response } from "express";
+import { Queue, Worker, Job } from "bullmq";
 import { createServer } from "http";
 import dotenv from "dotenv";
-import { createClient } from "redis";
 import cors from "cors";
 import { randomUUID } from "crypto";
 dotenv.config();
@@ -15,36 +14,31 @@ interface Order {
 const database: Record<string, Order> = {};
 
 const app = express();
+app.use(cors());
 const server = createServer(app);
 
-app.use(cors());
 app.use(express.json());
 
 const redisConfig = { connection: { host: "localhost", port: 6379 } };
 const queue = new Queue("orderQueue", redisConfig);
-const queueEvents = new QueueEvents("orderQueue", redisConfig);
 
-const redisClient = createClient();
-redisClient.connect();
-
-app.post("/order", async (req, res) => {
-  const pedido = req.body;
+app.post("/order", async (req: Request, res: Response) => {
+  const order = req.body;
   const jobId = randomUUID();
 
-  await queue.add("processOrder", pedido, { jobId });
+  await queue.add("processOrder", order, { jobId });
 
-  database[jobId] = { jobId, status: "Em processamento", result: null };
+  database[jobId] = { jobId, status: "Processing", result: null };
 
   res.status(202).json({ success: true, jobId });
 });
 
-app.get("/order/:jobId", async (req: any, res: any) => {
+app.get("/order/:jobId", async (req: Request, res: Response): Promise<any> => {
   const { jobId } = req.params;
 
   const order = database[jobId];
-  console.log(order);
   if (!order) {
-    return res.status(404).json({ error: "Pedido não encontrado" });
+    return res.status(404).json({ error: "Order not found" });
   }
 
   res.json(order);
@@ -55,27 +49,20 @@ const worker = new Worker(
   async (job: Job) => {
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    const result = { ...job.data, status: "Pedido processado com sucesso" };
+    const result = { ...job.data, status: "Order processed successfully" };
 
     const order = database[job.id!];
     if (order) {
-      order.status = "Processado";
+      order.status = "Processed";
       order.result = result;
     }
-
-    await redisClient.publish(
-      "orderProcessed",
-      JSON.stringify({ jobId: job.id, result })
-    );
 
     return result;
   },
   redisConfig
 );
 
-redisClient.subscribe("orderProcessed", (message) => {});
-
 const port = process.env.PORT || 3001;
 server.listen(port, () => {
-  console.log(`🚀 Servidor rodando em http://localhost:${port}`);
+  console.log(`🚀 Server running at http://localhost:${port}`);
 });
